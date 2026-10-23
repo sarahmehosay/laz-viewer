@@ -1,0 +1,23 @@
+{
+  "name": "laz-viewer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@loaders.gl/las": "^4.4.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "cesium": "^1.144.0",
+    "tailwindcss": "^4.3.3",
+    "vite-plugin-cesium": "^1.2.23",
+    "vue": "^3.5.40"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.0"
+  }
+}
