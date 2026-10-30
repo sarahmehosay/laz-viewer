@@ -1,36 +1,69 @@
 # laz-viewer
 
-A minimal Vue 3 + Tailwind CSS app for viewing LAS/LAZ point clouds in a CesiumJS globe.
+LAS/LAZ point cloud viewer with server-side ground surface extraction.
 
-## Stack
+```
+frontend/   Vue 3 + Vite + CesiumJS viewer and the "Ground extraction" panel
+backend/    FastAPI service (laspy + numpy + scipy) that classifies ground points
+```
 
-- Vue 3 + Vite
-- Tailwind CSS 4
-- CesiumJS (via `vite-plugin-cesium`)
-- `@loaders.gl/las` for in-browser LAS/LAZ parsing (LAZ decompression via bundled `laz-perf` WASM)
+The two folders are independent (own dependencies, own `.gitignore`) and talk only
+over HTTP under `/api`, so either can be split out or deployed separately.
 
-## Run
+## Run (development)
 
 ```bash
+# terminal 1 - backend on :8000
+cd backend
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/uvicorn app.main:app --reload
+
+# terminal 2 - frontend on :5173 (proxies /api -> :8000)
+cd frontend
 npm install
 npm run dev
 ```
 
-## How it works
+Set `VITE_API_TARGET` (dev proxy) or `VITE_API_BASE` (built app) to point the frontend at a different backend.
 
-- Drop a `.las`/`.laz` file onto the panel. The file's header is read first to get the
-  point count and decide a decimation factor so at most ~800k points are rendered
-  (kept in `src/lib/las.js`), then the point data is parsed on the main thread.
-- LAS files carry no real-world coordinate reference. The point cloud's local X/Y/Z is
-  treated as East/North/Up offsets from an anchor point on the globe that you can adjust
-  in the "Placement" panel (`src/lib/pointCloudScene.js`).
-- Points are colored by their RGB attribute if present, otherwise by height.
+## Run (Docker)
 
-## Known limitations
+```bash
+docker compose up --build   # open http://localhost:8080
+```
 
-- Only LAS versions 1.0-1.3 are supported (the underlying parser does not support 1.4).
-- Files are loaded fully into memory in the browser tab, so this only works for files up
-  to roughly 1.5 GiB. Multi-gigabyte point clouds need to be tiled/converted (e.g. with
-  PotreeConverter or py3dtiles into Cesium 3D Tiles) before they can be streamed to a browser.
-- Placement is an approximation, not a real georeference, since LAS/LAZ has no CRS metadata
-  this app resolves.
+nginx serves the built frontend and proxies `/api` to the backend container, so no CORS
+setup is needed. Job files live in the `ground-jobs` volume.
+
+## Ground extraction
+
+1. Drop a `.las`/`.laz` file in the viewer.
+2. Open **Ground extraction**, tune parameters if needed, click **Extract ground**.
+3. The file is uploaded, a job runs in the backend, and progress is polled.
+4. When done, switch between Original / Ground / Non-ground, or download the `.las` results
+   (ground points carry ASPRS classification 2).
+
+### API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/ground-jobs` | multipart `file` + params; returns `{id}` |
+| GET | `/api/ground-jobs/{id}` | status, progress, stats |
+| GET | `/api/ground-jobs/{id}/ground.las` | ground points (also `nonground.las`) |
+| DELETE | `/api/ground-jobs/{id}` | remove job and files |
+
+### Algorithm
+
+Progressive morphological filter (Zhang et al. 2003): build a minimum-Z raster, apply grey
+openings with growing windows, and treat cells the opening lowers by more than a slope-scaled
+threshold as objects (buildings, trees). Points within `point_threshold` of the resulting
+surface are ground. Parameters: `cell_size`, `max_window`, `slope`, `initial_threshold`,
+`max_threshold`, `point_threshold`.
+
+### Tests
+
+```bash
+cd backend && .venv/bin/python -m pytest
+```
+
+See `backend/README.md` and `frontend/README.md` for per-folder details.

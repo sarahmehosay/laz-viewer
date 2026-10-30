@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, ref } from 'vue'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { peekLasHeader, loadLasPointCloud, MAX_FILE_SIZE, MAX_RENDER_POINTS } from '../lib/las'
+import GroundExtractionPanel from './GroundExtractionPanel.vue'
 import { addPointCloudToScene, flyToBoundingSphere } from '../lib/pointCloudScene'
 
 const cesiumContainer = ref(null)
@@ -12,6 +13,8 @@ const isLoading = ref(false)
 const statusText = ref('')
 const errorText = ref('')
 const fileInfo = ref(null)
+const sourceFile = ref(null) // original user-selected file (input for ground extraction)
+const displayedFile = ref(null) // whatever is currently rendered (source or a derived result)
 
 const anchor = ref({ lat: 35.6586, lon: 139.7454, height: 0 })
 
@@ -47,7 +50,7 @@ function clearPointCloud() {
   errorText.value = ''
 }
 
-async function handleFile(file) {
+async function handleFile(file, { derived = false } = {}) {
   if (!file) return
   clearPointCloud()
   errorText.value = ''
@@ -62,6 +65,8 @@ async function handleFile(file) {
     return
   }
 
+  if (!derived) sourceFile.value = file
+  displayedFile.value = file
   isLoading.value = true
   try {
     statusText.value = 'Reading header...'
@@ -103,7 +108,7 @@ function onDrop(e) {
 function reapplyAnchor() {
   if (fileInfo.value) {
     statusText.value = 'Re-parsing with new placement...'
-    handleFile(fileInput.value.files[0])
+    handleFile(displayedFile.value, { derived: displayedFile.value !== sourceFile.value })
   }
 }
 </script>
@@ -176,6 +181,12 @@ function reapplyAnchor() {
           Reload at new anchor
         </button>
       </details>
+
+      <GroundExtractionPanel
+        :source-file="sourceFile"
+        @show="(f) => handleFile(f, { derived: true })"
+        @show-source="handleFile(sourceFile)"
+      />
     </div>
   </div>
 </template>
