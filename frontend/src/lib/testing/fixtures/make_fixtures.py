@@ -33,3 +33,14 @@ for name, version, fmt, compressed in FIXTURES:
         las.red, las.green, las.blue = i * 600, np.zeros(N), 65535 - i * 600
     las.write(OUT / name, do_compress=compressed)
     print(name, laspy.read(OUT / name).header.point_count)
+
+# RGB fields present but every point the same colour (scanners without a camera).
+for name, value in [("v12-fmt2-black.laz", 0), ("v14-fmt7-white.laz", 255)]:
+    fmt, version = (2, "1.2") if "fmt2" in name else (7, "1.4")
+    las = laspy.create(point_format=fmt, file_version=version)
+    las.header.scales = [0.01, 0.01, 0.01]
+    i = np.arange(N)
+    las.x, las.y, las.z = i, i, i / 10
+    las.red = las.green = las.blue = np.full(N, value)
+    las.write(OUT / name, do_compress=True)
+    print(name, value)

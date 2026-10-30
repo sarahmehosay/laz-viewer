@@ -99,7 +99,28 @@ describe.each(['v12-fmt3.laz', 'v14-fmt6.las', 'v14-fmt6.laz', 'v14-fmt7.laz', '
   }
 )
 
+describe.each([
+  ['v12-fmt2-black.laz', [0, 0, 0]],
+  ['v14-fmt7-white.laz', [255, 255, 255]],
+])('blank RGB in %s', (name, value) => {
+  it('is dropped so the cloud is coloured by height', async () => {
+    const file = fixture(name)
+    const header = await peekLasHeader(file)
+    expect(header.hasColor).toBe(true) // the format has RGB fields...
+    const cloud = await loadLasPointCloud(file, header)
+    expect(cloud.colors).toBeNull() // ...but they carry no colour
+    expect(cloud.blankColor).toEqual(value)
+  })
+})
+
 describe.each(['v12-fmt3.laz', 'v14-fmt7.laz', 'v14-fmt8.laz'])('colour in %s', (name) => {
+  it('is kept and not reported as blank', async () => {
+    const file = fixture(name)
+    const cloud = await loadLasPointCloud(file, await peekLasHeader(file))
+    expect(cloud.colors).not.toBeNull()
+    expect(cloud.blankColor).toBeNull()
+  })
+
   it('is decoded and scaled from 16 to 8 bits', async () => {
     const file = fixture(name)
     const { colors } = await loadLasPointCloud(file, await peekLasHeader(file))

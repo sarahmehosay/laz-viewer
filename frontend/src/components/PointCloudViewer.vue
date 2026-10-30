@@ -85,7 +85,8 @@ async function handleFile(file, { derived = false } = {}) {
       totalPoints: header.pointsCount,
       renderedPoints: cloud.renderedCount,
       skip: cloud.skip,
-      hasColor: header.hasColor,
+      hasColor: !!cloud.colors,
+      blankColor: cloud.blankColor,
     }
     statusText.value = ''
   } catch (err) {
@@ -151,6 +152,9 @@ function reapplyAnchor() {
         <p>{{ fileInfo.totalPoints.toLocaleString() }} points total</p>
         <p>{{ fileInfo.renderedPoints.toLocaleString() }} rendered (1 of every {{ fileInfo.skip }})</p>
         <p>{{ fileInfo.hasColor ? 'RGB color' : 'Colored by height' }}</p>
+        <p v-if="fileInfo.blankColor" class="text-xs text-slate-500 dark:text-slate-400">
+          The file's RGB is the same for every point ({{ fileInfo.blankColor.join(', ') }}), so it has no real colour.
+        </p>
       </div>
 
       <details class="mt-3 text-sm">
@@ -181,15 +185,11 @@ function reapplyAnchor() {
           Reload at new anchor
         </button>
       </details>
-
-      <!-- Ground extraction disabled for now: it needs the Python backend (../backend),
-           which GitHub Pages can't host. Uncomment this and the import above to re-enable.
-      <GroundExtractionPanel
+      <!-- <GroundExtractionPanel
         :source-file="sourceFile"
         @show="(f) => handleFile(f, { derived: true })"
         @show-source="handleFile(sourceFile)"
-      />
-      -->
+      /> -->
     </div>
   </div>
 </template>

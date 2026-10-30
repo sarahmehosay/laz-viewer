@@ -64,11 +64,28 @@ export async function loadLasPointCloud(file, header, { maxPoints = MAX_RENDER_P
     las: { skip, colorDepth: 'auto', fp64: false },
   })
 
+  const renderedCount = mesh.header.vertexCount
+  let colors = mesh.attributes.COLOR_0 ? mesh.attributes.COLOR_0.value : null
+  // Some scanners write the RGB fields without capturing colour (every point
+  // 0,0,0 or 255,255,255). That carries no information, so colour by height instead.
+  const blankColor = colors && uniformColor(colors, renderedCount)
+  if (blankColor) colors = null
+
   return {
     positions: mesh.attributes.POSITION.value,
-    colors: mesh.attributes.COLOR_0 ? mesh.attributes.COLOR_0.value : null,
+    colors,
+    blankColor,
     boundingBox: mesh.header.boundingBox,
-    renderedCount: mesh.header.vertexCount,
+    renderedCount,
     skip,
   }
+}
+
+/** Returns [r, g, b] if every point has that same colour, otherwise null. */
+function uniformColor(colors, count) {
+  const [r, g, b] = colors
+  for (let i = 1; i < count; i++) {
+    if (colors[i * 4] !== r || colors[i * 4 + 1] !== g || colors[i * 4 + 2] !== b) return null
+  }
+  return count > 0 ? [r, g, b] : null
 }
