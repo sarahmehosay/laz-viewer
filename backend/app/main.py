@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -9,10 +10,13 @@ from .ground import GroundParams
 
 MAX_UPLOAD_BYTES = 2 * 1024**3
 
+# Extra comma-separated origins, e.g. https://<user>.github.io for the Pages build
+EXTRA_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+
 app = FastAPI(title="LAZ ground extraction API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", *EXTRA_ORIGINS],
     allow_methods=["*"],
     allow_headers=["*"],
 )

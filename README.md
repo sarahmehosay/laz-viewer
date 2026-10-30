@@ -35,6 +35,20 @@ docker compose up --build   # open http://localhost:8080
 nginx serves the built frontend and proxies `/api` to the backend container, so no CORS
 setup is needed. Job files live in the `ground-jobs` volume.
 
+## Deploy (GitHub Pages)
+
+`.github/workflows/deploy-pages.yml` builds `frontend/` and publishes it on every push to
+`main` that touches `frontend/` (or run it manually from the Actions tab).
+
+1. Repo **Settings → Pages → Source: GitHub Actions**.
+2. Optional, for ground extraction: deploy `backend/` somewhere public, start it with
+   `CORS_ORIGINS=https://<owner>.github.io`, and set the repo variable
+   **Settings → Secrets and variables → Actions → Variables → `VITE_API_BASE`** to its URL
+   (e.g. `https://laz-api.example.com`, no trailing slash).
+
+Pages only hosts static files, so without a backend the viewer still works but
+**Extract ground** will fail.
+
 ## Ground extraction
 
 1. Drop a `.las`/`.laz` file in the viewer.
