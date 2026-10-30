@@ -3,7 +3,7 @@ import { onMounted, onBeforeUnmount, ref } from 'vue'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { peekLasHeader, loadLasPointCloud, MAX_FILE_SIZE, MAX_RENDER_POINTS } from '../lib/las'
-import GroundExtractionPanel from './GroundExtractionPanel.vue'
+// import GroundExtractionPanel from './GroundExtractionPanel.vue' // disabled, see template
 import { addPointCloudToScene, flyToBoundingSphere } from '../lib/pointCloudScene'
 
 const cesiumContainer = ref(null)
@@ -182,11 +182,14 @@ function reapplyAnchor() {
         </button>
       </details>
 
+      <!-- Ground extraction disabled for now: it needs the Python backend (../backend),
+           which GitHub Pages can't host. Uncomment this and the import above to re-enable.
       <GroundExtractionPanel
         :source-file="sourceFile"
         @show="(f) => handleFile(f, { derived: true })"
         @show-source="handleFile(sourceFile)"
       />
+      -->
     </div>
   </div>
 </template>
