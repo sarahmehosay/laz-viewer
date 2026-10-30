@@ -7,7 +7,7 @@ A minimal Vue 3 + Tailwind CSS app for viewing LAS/LAZ point clouds in a CesiumJ
 - Vue 3 + Vite
 - Tailwind CSS 4
 - CesiumJS (via `vite-plugin-cesium`)
-- `@loaders.gl/las` for in-browser LAS/LAZ parsing (LAZ decompression via bundled `laz-perf` WASM)
+- `@loaders.gl/las` for in-browser LAS/LAZ parsing (its `LAZRsLoader`: LAZ decompression via the bundled `laz-rs` WASM)
 
 ## Run
 
@@ -15,6 +15,17 @@ A minimal Vue 3 + Tailwind CSS app for viewing LAS/LAZ point clouds in a CesiumJ
 npm install
 npm run dev
 ```
+
+## Tests
+
+```bash
+npm test            # run once
+npm run test:watch  # re-run on change
+```
+
+Vitest + Vue Test Utils in happy-dom (`vitest.config.js`). Tests sit next to the code as
+`*.test.js`; `src/lib/testing/lasFixture.js` builds small LAS files in memory, and the
+backend is mocked, so no server is needed.
 
 ## How it works
 
@@ -28,7 +39,8 @@ npm run dev
 
 ## Known limitations
 
-- Only LAS versions 1.0-1.3 are supported (the underlying parser does not support 1.4).
+- LAS/LAZ 1.0-1.4 with point data formats 0-10 are supported. Extra bytes, waveform data
+  (formats 4, 5, 9, 10) and NIR (format 8) are ignored; only position and RGB are drawn.
 - Files are loaded fully into memory in the browser tab, so this only works for files up
   to roughly 1.5 GiB. Multi-gigabyte point clouds need to be tiled/converted (e.g. with
   PotreeConverter or py3dtiles into Cesium 3D Tiles) before they can be streamed to a browser.

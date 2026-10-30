@@ -78,6 +78,7 @@ surface are ground. Parameters: `cell_size`, `max_window`, `slope`, `initial_thr
 
 ```bash
 cd backend && .venv/bin/python -m pytest
+cd frontend && npm test
 ```
 
 See `backend/README.md` and `frontend/README.md` for per-folder details.

@@ -1,9 +1,12 @@
-import { LASLoader } from '@loaders.gl/las'
+// laz-rs (WASM) rather than the default laz-perf build: it decodes LAS/LAZ 1.4
+// and point data formats 4-10, which laz-perf's loader does not.
+import { LAZRsLoader } from '@loaders.gl/las'
 
 export const MAX_FILE_SIZE = 1.5 * 1024 ** 3 // 1.5 GiB, practical browser ArrayBuffer limit
 export const MAX_RENDER_POINTS = 800_000 // interactive cap for PointPrimitiveCollection
 
-const SUPPORTED_POINT_FORMATS = new Set([0, 1, 2, 3])
+const SUPPORTED_POINT_FORMATS = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+const COLOR_POINT_FORMATS = new Set([2, 3, 5, 7, 8, 10])
 
 /**
  * Reads just the fixed-size LAS/LAZ public header block (no point data) so we
@@ -20,16 +23,18 @@ export async function peekLasHeader(file) {
 
   const versionMajor = dv.getUint8(24)
   const versionMinor = dv.getUint8(25)
-  if (versionMajor * 10 + versionMinor > 13) {
+  const version = versionMajor * 10 + versionMinor
+  if (version > 14) {
     throw new Error(
-      `LAS ${versionMajor}.${versionMinor} is not supported (this viewer only supports LAS 1.0-1.3).`
+      `LAS ${versionMajor}.${versionMinor} is not supported (this viewer only supports LAS 1.0-1.4).`
     )
   }
 
   const pointsFormatIdRaw = dv.getUint8(104)
   const pointsFormatId = pointsFormatIdRaw & 0x3f
   const isCompressed = ((pointsFormatIdRaw & 0x80) >> 7) === 1 || ((pointsFormatIdRaw & 0x40) >> 6) === 1
-  const pointsCount = dv.getUint32(107, true)
+  // LAS 1.4 moved the point count to a 64-bit field; the legacy 32-bit one is 0 for formats 6-10.
+  const pointsCount = version === 14 ? Number(dv.getBigUint64(247, true)) : dv.getUint32(107, true)
   const bounds = [179, 187, 195, 203, 211, 219].map((o) => dv.getFloat64(o, true))
 
   if (!SUPPORTED_POINT_FORMATS.has(pointsFormatId)) {
@@ -42,7 +47,7 @@ export async function peekLasHeader(file) {
     pointsFormatId,
     isCompressed,
     pointsCount,
-    hasColor: pointsFormatId === 2 || pointsFormatId === 3,
+    hasColor: COLOR_POINT_FORMATS.has(pointsFormatId),
     maxs: [bounds[0], bounds[2], bounds[4]],
     mins: [bounds[1], bounds[3], bounds[5]],
   }
@@ -55,7 +60,7 @@ export async function peekLasHeader(file) {
 export async function loadLasPointCloud(file, header, { maxPoints = MAX_RENDER_POINTS } = {}) {
   const skip = Math.max(1, Math.ceil(header.pointsCount / maxPoints))
   const arrayBuffer = await file.arrayBuffer()
-  const mesh = await LASLoader.parse(arrayBuffer, {
+  const mesh = await LAZRsLoader.parse(arrayBuffer, {
     las: { skip, colorDepth: 'auto', fp64: false },
   })
 
