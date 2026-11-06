@@ -41,10 +41,10 @@ onMounted(() => {
     timeline: false,
     fullscreenButton: false,
   })
-  // Plain white background instead of the globe / sky.
+  // Plain gray background instead of the globe / sky.
   const { scene } = viewer
   scene.globe.show = false
-  scene.backgroundColor = Cesium.Color.WHITE
+  scene.backgroundColor = Cesium.Color.fromCssColorString('#6b7280')
   scene.skyBox.show = false
   scene.skyAtmosphere.show = false
   scene.sun.show = false

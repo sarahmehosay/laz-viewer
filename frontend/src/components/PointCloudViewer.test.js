@@ -18,7 +18,7 @@ vi.mock('cesium', () => ({
     }
     this.destroy = vi.fn()
   }),
-  Color: { WHITE: 'white' },
+  Color: { fromCssColorString: (c) => c },
 }))
 vi.mock('../lib/las', async (importOriginal) => ({
   ...(await importOriginal()),
