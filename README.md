@@ -81,4 +81,6 @@ cd backend && .venv/bin/python -m pytest
 cd frontend && npm test
 ```
 
+Demo Data: https://www.limon.eu/support/sample-data
+
 See `backend/README.md` and `frontend/README.md` for per-folder details.
