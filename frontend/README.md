@@ -32,9 +32,15 @@ backend is mocked, so no server is needed.
 - Drop a `.las`/`.laz` file onto the panel. The file's header is read first to get the
   point count and decide a decimation factor so at most ~800k points are rendered
   (kept in `src/lib/las.js`), then the point data is parsed on the main thread.
-- LAS files carry no real-world coordinate reference. The point cloud's local X/Y/Z is
-  treated as East/North/Up offsets from an anchor point on the globe that you can adjust
-  in the "Placement" panel (`src/lib/pointCloudScene.js`).
+- The file's CRS is read from its VLRs: the OGC WKT record (LAS 1.4, also as an EVLR) or
+  the GeoTIFF GeoKeyDirectory (EPSG code + vertical units). Points are projected to WGS84
+  with `proj4` and placed at their real position (`src/lib/crs.js`). Common EPSG codes are
+  built in (JGD2000/JGD2011/Tokyo Japan Plane Rectangular CS I-XIX, JGD UTM, WGS 84 UTM,
+  NAD83 UTM, GDA94/GDA2020 MGA); WKT is used directly when present; any other code is
+  looked up on epsg.io.
+- In "Placement on globe" you can override the file's CRS with another EPSG code (some
+  scanners write the wrong zone), or use a manual anchor: local X/Y/Z become East/North/Up
+  offsets from a point you choose. Files without a CRS use the anchor.
 - Points are colored by their RGB attribute if present, otherwise by height.
 
 ## Known limitations
@@ -44,5 +50,8 @@ backend is mocked, so no server is needed.
 - Files are loaded fully into memory in the browser tab, so this only works for files up
   to roughly 1.5 GiB. Multi-gigabyte point clouds need to be tiled/converted (e.g. with
   PotreeConverter or py3dtiles into Cesium 3D Tiles) before they can be streamed to a browser.
-- Placement is an approximation, not a real georeference, since LAS/LAZ has no CRS metadata
-  this app resolves.
+- Z is drawn as height above the WGS84 ellipsoid. Most survey data uses orthometric heights
+  (e.g. Japan's T.P.), so clouds sit tens of metres off true ellipsoidal height; this is not
+  visible on the current terrain-less globe but would be with a terrain provider.
+- Horizontal datum shifts are the 3/7-parameter approximations in proj4 (no grid files), so
+  Tokyo-datum and NAD27 data can be off by a few metres.

@@ -2,8 +2,9 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
-import { peekLasHeader, loadLasPointCloud, MAX_FILE_SIZE, MAX_RENDER_POINTS } from '../lib/las'
-// import GroundExtractionPanel from './GroundExtractionPanel.vue' // disabled, see template
+import { peekLasHeader, loadLasPointCloud, readLasCrs, MAX_FILE_SIZE, MAX_RENDER_POINTS } from '../lib/las'
+import { builtInCrs, resolveCrs } from '../lib/crs'
+import GroundExtractionPanel from './GroundExtractionPanel.vue' // disabled, see template
 import { addPointCloudToScene, flyToBoundingSphere } from '../lib/pointCloudScene'
 
 const cesiumContainer = ref(null)
@@ -16,16 +17,22 @@ const fileInfo = ref(null)
 const sourceFile = ref(null) // original user-selected file (input for ground extraction)
 const displayedFile = ref(null) // whatever is currently rendered (source or a derived result)
 
+// Optional demo cloud: the first .las/.laz in frontend/demo is loaded on start.
+// (An empty glob when the folder has no such file.)
+const demoFiles = import.meta.glob('../../demo/*.{las,laz}', { query: '?url', import: 'default', eager: true })
+
 const anchor = ref({ lat: 35.6586, lon: 139.7454, height: 0 })
+// How the cloud is put on the globe: the file's own CRS, an EPSG code the user
+// types (for files whose CRS is missing or wrong), or the manual anchor above.
+const placementMode = ref('file') // file | epsg | anchor
+const epsgOverride = ref(null)
 
 let viewer = null
 let currentCollection = null
 
 onMounted(() => {
   viewer = new Cesium.Viewer(cesiumContainer.value, {
-    imageryProvider: new Cesium.OpenStreetMapImageryProvider({
-      url: 'https://tile.openstreetmap.org/',
-    }),
+    baseLayer: false,
     baseLayerPicker: false,
     geocoder: false,
     sceneModePicker: false,
@@ -34,7 +41,33 @@ onMounted(() => {
     timeline: false,
     fullscreenButton: false,
   })
+  // Plain white background instead of the globe / sky.
+  const { scene } = viewer
+  scene.globe.show = false
+  scene.backgroundColor = Cesium.Color.WHITE
+  scene.skyBox.show = false
+  scene.skyAtmosphere.show = false
+  scene.sun.show = false
+  scene.moon.show = false
+  scene.fog.enabled = false
+
+  loadDemo()
 })
+
+async function loadDemo() {
+  const [path] = Object.keys(demoFiles).sort()
+  if (!path) return
+  try {
+    const res = await fetch(demoFiles[path])
+    if (!res.ok) return
+    const blob = await res.blob()
+    // Guard against dev servers answering with index.html for a missing file.
+    if (blob.type.includes('html')) return
+    await handleFile(new File([blob], path.split('/').pop()))
+  } catch {
+    // demo is best-effort
+  }
+}
 
 onBeforeUnmount(() => {
   viewer?.destroy()
@@ -72,13 +105,24 @@ async function handleFile(file, { derived = false } = {}) {
     statusText.value = 'Reading header...'
     const header = await peekLasHeader(file)
 
+    const fileCrs = await readLasCrs(file, header).catch(() => null)
+
     statusText.value = `Parsing ${header.pointsCount.toLocaleString()} points...`
     const cloud = await loadLasPointCloud(file, header, { maxPoints: MAX_RENDER_POINTS })
 
     statusText.value = 'Building scene...'
-    const { collection, boundingSphere } = addPointCloudToScene(viewer, cloud, anchor.value)
-    currentCollection = collection
-    flyToBoundingSphere(viewer, boundingSphere)
+    const { crs, crsWarning } = await chooseCrs(fileCrs)
+    let placed
+    try {
+      placed = addPointCloudToScene(viewer, cloud, anchor.value, crs)
+    } catch (err) {
+      if (!crs) throw err
+      // e.g. local coordinates labelled with a CRS they don't fit
+      placed = addPointCloudToScene(viewer, cloud, anchor.value)
+      fileInfoWarning = `${err.message} Placed at the manual anchor instead.`
+    }
+    currentCollection = placed.collection
+    flyToBoundingSphere(viewer, placed.boundingSphere)
 
     fileInfo.value = {
       name: file.name,
@@ -87,7 +131,11 @@ async function handleFile(file, { derived = false } = {}) {
       skip: cloud.skip,
       hasColor: !!cloud.colors,
       blankColor: cloud.blankColor,
+      fileCrsLabel: fileCrs && crsLabel(fileCrs),
+      placedBy: fileInfoWarning ? null : crs?.label ?? null,
+      crsWarning: fileInfoWarning ?? crsWarning,
     }
+    fileInfoWarning = null
     statusText.value = ''
   } catch (err) {
     errorText.value = err.message || String(err)
@@ -97,12 +145,39 @@ async function handleFile(file, { derived = false } = {}) {
   }
 }
 
+let fileInfoWarning = null
+
+function crsLabel(info) {
+  if (!info.epsg) return 'WKT (no EPSG code)'
+  const name = builtInCrs(info.epsg)?.name
+  return name ? `EPSG:${info.epsg} · ${name}` : `EPSG:${info.epsg}`
+}
+
+/** Resolves the CRS for the current placement mode; falls back to the anchor with a warning. */
+async function chooseCrs(fileCrs) {
+  try {
+    if (placementMode.value === 'file' && fileCrs) return { crs: await resolveCrs(fileCrs), crsWarning: null }
+    if (placementMode.value === 'epsg') {
+      if (!Number.isInteger(epsgOverride.value) || epsgOverride.value <= 0) {
+        return { crs: null, crsWarning: 'Enter an EPSG code (e.g. 6675). Placed at the manual anchor.' }
+      }
+      const zUnitsToMetres = fileCrs?.zUnitsToMetres ?? 1
+      return { crs: await resolveCrs({ epsg: epsgOverride.value, zUnitsToMetres }), crsWarning: null }
+    }
+  } catch (err) {
+    return { crs: null, crsWarning: `${err.message} Placed at the manual anchor instead.` }
+  }
+  return { crs: null, crsWarning: null }
+}
+
 function onFileInputChange(e) {
+  placementMode.value = 'file'
   handleFile(e.target.files?.[0])
 }
 
 function onDrop(e) {
   isDragging.value = false
+  placementMode.value = 'file'
   handleFile(e.dataTransfer?.files?.[0])
 }
 
@@ -155,41 +230,71 @@ function reapplyAnchor() {
         <p v-if="fileInfo.blankColor" class="text-xs text-slate-500 dark:text-slate-400">
           The file's RGB is the same for every point ({{ fileInfo.blankColor.join(', ') }}), so it has no real colour.
         </p>
+        <p>{{ fileInfo.placedBy ? `Placed by ${fileInfo.placedBy}` : 'Placed at the manual anchor' }}</p>
+        <p v-if="fileInfo.crsWarning" class="text-xs text-amber-700 dark:text-amber-400">{{ fileInfo.crsWarning }}</p>
       </div>
 
       <details class="mt-3 text-sm">
-        <summary class="cursor-pointer text-slate-600 dark:text-slate-300">Placement (anchor on globe)</summary>
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          LAS files don't carry real-world geolocation, so the point cloud's local X/Y/Z is placed
-          as East/North/Up offsets from this anchor.
-        </p>
-        <div class="mt-2 grid grid-cols-3 gap-2">
-          <label class="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-            Lat
-            <input v-model.number="anchor.lat" type="number" step="0.0001" class="rounded border px-1 py-0.5 text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+        <summary class="cursor-pointer text-slate-600 dark:text-slate-300">Placement on globe</summary>
+        <div class="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-300">
+          <label class="flex items-start gap-2">
+            <input v-model="placementMode" type="radio" value="file" class="mt-0.5" :disabled="fileInfo && !fileInfo.fileCrsLabel" />
+            <span>
+              File's CRS
+              <span class="block text-slate-500 dark:text-slate-400">
+                {{ !fileInfo ? 'Read from the file when it loads' : fileInfo.fileCrsLabel || 'None in this file' }}
+              </span>
+            </span>
           </label>
-          <label class="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-            Lon
-            <input v-model.number="anchor.lon" type="number" step="0.0001" class="rounded border px-1 py-0.5 text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label class="flex items-center gap-2">
+            <input v-model="placementMode" type="radio" value="epsg" />
+            <span>EPSG code</span>
+            <input
+              v-model.number="epsgOverride"
+              type="number"
+              min="1"
+              placeholder="e.g. 6675"
+              class="w-24 rounded border px-1 py-0.5 text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              :disabled="placementMode !== 'epsg'"
+            />
           </label>
-          <label class="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-            Height (m)
-            <input v-model.number="anchor.height" type="number" step="1" class="rounded border px-1 py-0.5 text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label class="flex items-start gap-2">
+            <input v-model="placementMode" type="radio" value="anchor" class="mt-0.5" />
+            <span>
+              Manual anchor
+              <span class="block text-slate-500 dark:text-slate-400">
+                Local X/Y/Z become East/North/Up offsets from this point.
+              </span>
+            </span>
           </label>
+          <div class="grid grid-cols-3 gap-2 pl-5">
+            <label class="flex flex-col text-slate-500 dark:text-slate-400">
+              Lat
+              <input v-model.number="anchor.lat" type="number" step="0.0001" class="rounded border px-1 py-0.5 text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" :disabled="placementMode !== 'anchor'" />
+            </label>
+            <label class="flex flex-col text-slate-500 dark:text-slate-400">
+              Lon
+              <input v-model.number="anchor.lon" type="number" step="0.0001" class="rounded border px-1 py-0.5 text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" :disabled="placementMode !== 'anchor'" />
+            </label>
+            <label class="flex flex-col text-slate-500 dark:text-slate-400">
+              Height (m)
+              <input v-model.number="anchor.height" type="number" step="1" class="rounded border px-1 py-0.5 text-slate-800 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" :disabled="placementMode !== 'anchor'" />
+            </label>
+          </div>
         </div>
         <button
           class="mt-2 w-full rounded bg-slate-700 py-1 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-          :disabled="!fileInfo"
+          :disabled="!fileInfo || isLoading"
           @click="reapplyAnchor"
         >
-          Reload at new anchor
+          Apply placement
         </button>
       </details>
-      <!-- <GroundExtractionPanel
+      <GroundExtractionPanel
         :source-file="sourceFile"
         @show="(f) => handleFile(f, { derived: true })"
         @show-source="handleFile(sourceFile)"
-      /> -->
+      />
     </div>
   </div>
 </template>

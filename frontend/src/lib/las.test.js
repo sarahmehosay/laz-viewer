@@ -2,7 +2,7 @@
 // (laz-rs loads its WASM through Node's fetch/Response; happy-dom's would be rejected)
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { loadLasPointCloud, peekLasHeader } from './las'
+import { loadLasPointCloud, peekLasHeader, readLasCrs } from './las'
 import { makeLasFile } from './testing/lasFixture'
 
 // Real files written by laspy, see testing/fixtures/make_fixtures.py.
@@ -151,5 +151,47 @@ describe('loadLasPointCloud', () => {
     expect(cloud.skip).toBe(3)
     expect(cloud.renderedCount).toBeLessThanOrEqual(4)
     expect(cloud.positions.length).toBe(cloud.renderedCount * 3)
+  })
+})
+
+describe('readLasCrs', () => {
+  const crsOf = async (name) => {
+    const file = fixture(name)
+    return readLasCrs(file, await peekLasHeader(file))
+  }
+
+  it('reads the EPSG code from a GeoTIFF GeoKeyDirectory', async () => {
+    expect(await crsOf('crs-geotiff-6675.laz')).toEqual({
+      epsg: 6675,
+      wkt: null,
+      zUnitsToMetres: 1,
+      source: 'geotiff',
+    })
+  })
+
+  it('reads vertical units from the GeoKeys', async () => {
+    expect((await crsOf('crs-geotiff-6675-usft.laz')).zUnitsToMetres).toBeCloseTo(0.3048006, 6)
+  })
+
+  it.each(['crs-wkt-albers.laz', 'crs-wkt-evlr-albers.laz'])('reads the WKT record in %s', async (name) => {
+    const crs = await crsOf(name)
+    expect(crs.source).toBe('wkt')
+    expect(crs.epsg).toBe(6350)
+    expect(crs.wkt).toMatch(/^COMPD_CS\["NAD83\(2011\) \/ Conus Albers/)
+    expect(crs.wkt).not.toMatch(/\0/)
+    expect(crs.zUnitsToMetres).toBeCloseTo(0.3048006, 6)
+  })
+
+  it('returns null for files without CRS records', async () => {
+    expect(await crsOf('v12-fmt3.laz')).toBeNull()
+    expect(await crsOf('v14-fmt6.laz')).toBeNull()
+  })
+
+  it('keeps full float64 precision for georeferenced coordinates', async () => {
+    const file = fixture('crs-wkt-albers.laz')
+    const cloud = await loadLasPointCloud(file, await peekLasHeader(file))
+    expect(cloud.positions).toBeInstanceOf(Float64Array)
+    expect(cloud.positions[3 * 7]).toBeCloseTo(938507, 9)
+    expect(cloud.positions[3 * 7 + 2]).toBeCloseTo(10.7, 9) // float32 gives 10.6999998
   })
 })

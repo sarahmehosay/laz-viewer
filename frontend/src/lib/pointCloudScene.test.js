@@ -72,3 +72,44 @@ it('flyToBoundingSphere frames the sphere from an oblique angle', () => {
   expect(offset.range).toBe(25)
   expect(offset.pitch).toBeCloseTo(Cesium.Math.toRadians(-30))
 })
+
+describe('addPointCloudToScene with a CRS', () => {
+  // A stand-in CRS whose X/Y already are lon/lat degrees.
+  const lonLatCrs = { toLonLat: ([x, y]) => [x, y], zScale: 0.5 }
+  const georef = () => ({
+    positions: new Float64Array([139.7, 35.6, 10, 139.8, 35.7, 30]),
+    colors: null,
+    boundingBox: [
+      [139.7, 35.6, 10],
+      [139.8, 35.7, 30],
+    ],
+  })
+
+  it('puts each point at its converted lon/lat with Z scaled to metres', () => {
+    const { collection } = addPointCloudToScene(fakeViewer(), georef(), anchor, lonLatCrs)
+    const p0 = Cesium.Cartographic.fromCartesian(collection.get(0).position)
+    expect(Cesium.Math.toDegrees(p0.longitude)).toBeCloseTo(139.7, 9)
+    expect(Cesium.Math.toDegrees(p0.latitude)).toBeCloseTo(35.6, 9)
+    expect(p0.height).toBeCloseTo(5, 6)
+  })
+
+  it('ignores the anchor', () => {
+    const a = addPointCloudToScene(fakeViewer(), georef(), anchor, lonLatCrs)
+    const b = addPointCloudToScene(fakeViewer(), georef(), { lat: 0, lon: 0, height: 0 }, lonLatCrs)
+    expect(a.collection.get(1).position).toEqual(b.collection.get(1).position)
+  })
+
+  it('bounds the converted cloud', () => {
+    const { boundingSphere } = addPointCloudToScene(fakeViewer(), georef(), anchor, lonLatCrs)
+    const centre = Cesium.Cartographic.fromCartesian(boundingSphere.center)
+    expect(Cesium.Math.toDegrees(centre.longitude)).toBeCloseTo(139.75, 2)
+    expect(Cesium.Math.toDegrees(centre.latitude)).toBeCloseTo(35.65, 2)
+  })
+
+  it('surfaces conversion errors without adding anything to the scene', () => {
+    const viewer = fakeViewer()
+    const broken = { toLonLat: () => { throw new Error('outside the valid area') }, zScale: 1 }
+    expect(() => addPointCloudToScene(viewer, georef(), anchor, broken)).toThrow(/outside/)
+    expect(viewer.scene.primitives.add).not.toHaveBeenCalled()
+  })
+})
