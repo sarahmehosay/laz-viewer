@@ -31,10 +31,11 @@ describe('addPointCloudToScene', () => {
     expect(collection.length).toBe(2)
   })
 
-  it('centres the cloud on the anchor point', () => {
+  it('centres the cloud on the anchor horizontally and rests it on the anchor height', () => {
     const { boundingSphere } = addPointCloudToScene(fakeViewer(), cloud(), anchor)
-    const anchorWorld = Cesium.Cartesian3.fromDegrees(anchor.lon, anchor.lat, anchor.height)
-    expect(Cesium.Cartesian3.distance(boundingSphere.center, anchorWorld)).toBeLessThan(1e-3)
+    // Box is 4 m tall, so its centre is 2 m above the anchor
+    const expected = Cesium.Cartesian3.fromDegrees(anchor.lon, anchor.lat, anchor.height + 2)
+    expect(Cesium.Cartesian3.distance(boundingSphere.center, expected)).toBeLessThan(1e-3)
     // Half the box diagonal: sqrt(10^2 + 20^2 + 4^2) / 2
     expect(boundingSphere.radius).toBeCloseTo(Math.sqrt(516) / 2, 3)
   })

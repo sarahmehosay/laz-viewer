@@ -7,7 +7,9 @@ import * as Cesium from 'cesium'
  * at its real position; Z is used as the height above the ellipsoid.
  *
  * Without one, the file's local X/Y/Z are treated as East/North/Up offsets
- * from a user-chosen anchor point on the globe (a local tangent plane). This
+ * from a user-chosen anchor point on the globe (a local tangent plane). The
+ * cloud is centred on the anchor horizontally and its lowest point rests at
+ * the anchor's height, so it sits on the ground rather than half-buried. This
  * keeps the cloud's shape and scale correct; only its real-world location is
  * an approximation the user controls.
  */
@@ -55,10 +57,9 @@ function crsPlacement(crs) {
   }
 }
 
-function anchorPlacement(anchor, [[minX, minY, minZ], [maxX, maxY, maxZ]]) {
+function anchorPlacement(anchor, [[minX, minY, minZ], [maxX, maxY]]) {
   const centerX = (minX + maxX) / 2
   const centerY = (minY + maxY) / 2
-  const centerZ = (minZ + maxZ) / 2
   const enuMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(
     Cesium.Cartesian3.fromDegrees(anchor.lon, anchor.lat, anchor.height)
   )
@@ -66,7 +67,7 @@ function anchorPlacement(anchor, [[minX, minY, minZ], [maxX, maxY, maxZ]]) {
   return (x, y, z) => {
     local.x = x - centerX
     local.y = y - centerY
-    local.z = z - centerZ
+    local.z = z - minZ
     return Cesium.Matrix4.multiplyByPoint(enuMatrix, local, new Cesium.Cartesian3())
   }
 }

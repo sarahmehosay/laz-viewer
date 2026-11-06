@@ -16,8 +16,10 @@ vi.mock('cesium', () => ({
       moon: {},
       fog: {},
     }
+    this.imageryLayers = { addImageryProvider: vi.fn() }
     this.destroy = vi.fn()
   }),
+  OpenStreetMapImageryProvider: vi.fn(),
   Color: { fromCssColorString: (c) => c },
 }))
 vi.mock('../lib/las', async (importOriginal) => ({

@@ -41,18 +41,26 @@ onMounted(() => {
     timeline: false,
     fullscreenButton: false,
   })
-  // Plain gray background instead of the globe / sky.
-  const { scene } = viewer
-  scene.globe.show = false
-  scene.backgroundColor = Cesium.Color.fromCssColorString('#6b7280')
-  scene.skyBox.show = false
-  scene.skyAtmosphere.show = false
-  scene.sun.show = false
-  scene.moon.show = false
-  scene.fog.enabled = false
+  // Map imagery is always loaded but only shown for georeferenced clouds.
+  viewer.imageryLayers.addImageryProvider(
+    new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' })
+  )
+  viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#6b7280')
+  showGlobe(false)
 
   loadDemo()
 })
+
+/** Globe (map) when the cloud is at its real-world location, plain gray otherwise. */
+function showGlobe(show) {
+  const { scene } = viewer
+  scene.globe.show = show
+  scene.skyBox.show = show
+  scene.skyAtmosphere.show = show
+  scene.sun.show = show
+  scene.moon.show = show
+  scene.fog.enabled = show
+}
 
 async function loadDemo() {
   const [path] = Object.keys(demoFiles).sort()
@@ -113,15 +121,18 @@ async function handleFile(file, { derived = false } = {}) {
     statusText.value = 'Building scene...'
     const { crs, crsWarning } = await chooseCrs(fileCrs)
     let placed
+    let georeferenced = !!crs
     try {
       placed = addPointCloudToScene(viewer, cloud, anchor.value, crs)
     } catch (err) {
       if (!crs) throw err
       // e.g. local coordinates labelled with a CRS they don't fit
       placed = addPointCloudToScene(viewer, cloud, anchor.value)
+      georeferenced = false
       fileInfoWarning = `${err.message} Placed at the manual anchor instead.`
     }
     currentCollection = placed.collection
+    showGlobe(georeferenced)
     flyToBoundingSphere(viewer, placed.boundingSphere)
 
     fileInfo.value = {
@@ -190,11 +201,10 @@ function reapplyAnchor() {
 </script>
 
 <template>
-  <div class="relative h-full w-full">
-    <div ref="cesiumContainer" class="h-full w-full"></div>
-
+  <!-- Small screens: panel stacked above the viewer. md and up: panel floats over it. -->
+  <div class="relative flex h-full w-full flex-col md:block">
     <div
-      class="absolute top-4 left-4 w-80 rounded-lg bg-white/95 p-4 shadow-lg backdrop-blur-sm dark:bg-slate-900/95"
+      class="order-first max-h-[45vh] w-full shrink-0 overflow-y-auto bg-white/95 p-4 shadow-lg dark:bg-slate-900/95 md:absolute md:top-4 md:left-4 md:z-10 md:max-h-[calc(100%-2rem)] md:w-80 md:rounded-lg md:backdrop-blur-sm"
       @dragover.prevent="isDragging = true"
       @dragleave.prevent="isDragging = false"
       @drop.prevent="onDrop"
@@ -296,5 +306,7 @@ function reapplyAnchor() {
         @show-source="handleFile(sourceFile)"
       />
     </div>
+
+    <div ref="cesiumContainer" class="min-h-0 w-full flex-1 md:h-full"></div>
   </div>
 </template>
